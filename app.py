@@ -3,7 +3,7 @@ import os
 import zipfile
 import torch
 import json
-from torchvision import transforms, datasets
+from torchvision import transforms
 from PIL import Image, UnidentifiedImageError
 import torch.nn as nn
 from torch.utils.data import DataLoader, Dataset
@@ -13,7 +13,7 @@ import pandas as pd
 import uuid
 from sklearn.model_selection import train_test_split
 from openpyxl import Workbook
-from openpyxl.drawing.image import Image as OpenpyxlImage
+from openpyxl.drawing.image import Image as XLImage
 
 app = Flask(__name__)
 app.secret_key = 'your_secret_key'
@@ -25,6 +25,7 @@ CATEGORIES_FILE = 'categories.json'
 
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 app.config['NEW_CATEGORY_FOLDER'] = NEW_CATEGORY_FOLDER
+app.config['MAX_CONTENT_LENGTH'] = 2 * 1024 * 1024 * 1024  # 2GB limit
 
 # Ensure the upload and new category folders exist
 for folder in [UPLOAD_FOLDER, NEW_CATEGORY_FOLDER]:
@@ -55,13 +56,15 @@ class CustomImageDataset(Dataset):
         label = self.labels[idx]
         return image, label
 
-class MultiTaskResNeXt(nn.Module):
+class MultiTaskEfficientNet(nn.Module):
     def __init__(self, num_classes=3):
-        super(MultiTaskResNeXt, self).__init__()
-        self.model = models.resnext101_32x8d(weights=models.ResNeXt101_32X8D_Weights.IMAGENET1K_V1)
-        num_ftrs = self.model.fc.in_features
+        super(MultiTaskEfficientNet, self).__init__()
+        # Load EfficientNet B4
+        self.model = models.efficientnet_b4(weights=models.EfficientNet_B4_Weights.IMAGENET1K_V1)
+        num_ftrs = self.model.classifier[1].in_features
 
-        self.model.fc = nn.Identity()
+        # Remove the final fully connected layer
+        self.model.classifier = nn.Identity()
 
         self.heads = nn.ModuleList()
         for _ in range(num_classes):
@@ -70,7 +73,8 @@ class MultiTaskResNeXt(nn.Module):
                 nn.Linear(num_ftrs, 512),
                 nn.ReLU(),
                 nn.Dropout(0.5),
-                nn.Linear(512, 2)
+                nn.Linear(512, 2),
+                nn.BatchNorm1d(2)
             ))
 
     def forward(self, x):
@@ -81,10 +85,9 @@ class MultiTaskResNeXt(nn.Module):
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 def load_model(model_path, num_classes):
-    model = MultiTaskResNeXt(num_classes=num_classes)
+    model = MultiTaskEfficientNet(num_classes=num_classes)
     state_dict = torch.load(model_path, map_location=device)
 
-    # Rename keys in state_dict to match new model structure
     new_state_dict = {}
     for key, value in state_dict.items():
         if "pylone_fc" in key:
@@ -96,7 +99,7 @@ def load_model(model_path, num_classes):
         else:
             new_key = key
         new_state_dict[new_key] = value
-    
+
     model.load_state_dict(new_state_dict, strict=False)
     model.to(device)
     model.eval()
@@ -119,6 +122,9 @@ def classify_image(model, image_path):
     except UnidentifiedImageError:
         print(f"Error opening image: {image_path}")
         return None
+    except Exception as e:
+        print(f"Unexpected error: {e}")
+        return None
     image = transform_image(image)
     image = image.to(device)
     with torch.no_grad():
@@ -137,15 +143,31 @@ def extract_zip(zip_path, extract_to):
 def create_excel(results, zip_filename):
     wb = Workbook()
     ws = wb.active
-    ws.append(['Image', 'Nom'] + CLASS_NAMES)
-    
+    ws.title = "Results"
+
+    # Adding headers
+    headers = ["Image", "Nom"] + CLASS_NAMES
+    ws.append(headers)
+
+    # Set column widths
+    ws.column_dimensions['A'].width = 20
+    ws.column_dimensions['B'].width = 30
+
     for result in results:
-        img_path = os.path.join(app.root_path, 'static', result['path'])
-        img = OpenpyxlImage(img_path)
-        ws.append(['', result['name']] + [result[category] for category in CLASS_NAMES])
-        ws.add_image(img, f'A{ws.max_row}')
-    
-    excel_path = os.path.join(app.root_path, f'{zip_filename}_results.xlsx')
+        img_path = os.path.join('static', result['path'])
+        img_name = result['name']
+        row = ["", img_name] + [result[category] for category in CLASS_NAMES]
+        ws.append(row)
+
+        if os.path.exists(img_path):
+            img = XLImage(img_path)
+            img.width = 100
+            img.height = 100
+            ws.add_image(img, f'A{ws.max_row}')
+        
+        ws.row_dimensions[ws.max_row].height = 80
+
+    excel_path = f'{zip_filename}_results.xlsx'
     wb.save(excel_path)
     return excel_path
 
@@ -172,10 +194,9 @@ def upload_images():
         extract_zip(zip_path, upload_folder)
         
         image_paths = []
-        supported_extensions = ('.jpg', '.jpeg', '.png', '.bmp', '.gif', '.tiff', '.webp', '.jfif')  # Add more extensions if needed
         for root, _, files in os.walk(upload_folder):
             for file_name in files:
-                if file_name.lower().endswith(supported_extensions):
+                if file_name.lower().endswith(('jpg', 'jpeg', 'png')):
                     image_paths.append(os.path.join(root, file_name))
 
         results = []
@@ -206,7 +227,6 @@ def add_category():
 
         files_ok = request.files.getlist('file_ok')
         files_nok = request.files.getlist('file_nok')
-        supported_extensions = ('.jpg', '.jpeg', '.png', '.bmp', '.gif', '.tiff', '.webp', '.jfif')
         if category_name and files_ok and files_nok:
             category_folder_ok = os.path.join(app.config['NEW_CATEGORY_FOLDER'], category_name, 'ok')
             category_folder_nok = os.path.join(app.config['NEW_CATEGORY_FOLDER'], category_name, 'nok')
@@ -214,16 +234,16 @@ def add_category():
                 os.makedirs(category_folder_ok)
             if not os.path.exists(category_folder_nok):
                 os.makedirs(category_folder_nok)
-            
+
             for file in files_ok:
-                if file and file.filename.lower().endswith(supported_extensions):
+                if file and file.filename.lower().endswith(('jpg', 'jpeg', 'png')):
                     file_path = os.path.join(category_folder_ok, file.filename)
                     file.save(file_path)
             for file in files_nok:
-                if file and file.filename.lower().endswith(supported_extensions):
+                if file and file.filename.lower().endswith(('jpg', 'jpeg', 'png')):
                     file_path = os.path.join(category_folder_nok, file.filename)
                     file.save(file_path)
-            
+
             if category_name not in CLASS_NAMES:
                 CLASS_NAMES.append(category_name)
                 with open(CATEGORIES_FILE, 'w') as f:
@@ -243,7 +263,7 @@ def re_train_model(new_category, ok_folder, nok_folder):
     global model
     num_classes = len(CLASS_NAMES)
 
-    new_model = MultiTaskResNeXt(num_classes=num_classes)
+    new_model = MultiTaskEfficientNet(num_classes=num_classes)
     new_model.load_state_dict(model.state_dict(), strict=False)
 
     for layer in new_model.heads[-1]:
@@ -293,7 +313,7 @@ def re_train_model(new_category, ok_folder, nok_folder):
             optimizer.step()
 
             running_loss += loss.item() * inputs.size(0)
-        
+
         print(f'Epoch {epoch+1}, Loss: {running_loss / len(train_loader.dataset):.4f}')
 
         new_model.eval()

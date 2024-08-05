@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Entraînement et Classification</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background: url("{{ url_for('static', filename='images/eiffage_img.jpg') }}") no-repeat center center fixed;
+            background-size: cover;
+            color: #000;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+        }
+
+        .container {
+            text-align: center;
+            background-color: rgba(255, 255, 255, 0.9);
+            padding: 30px;
+            border-radius: 10px;
+            width: 90%;
+            max-width: 600px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+            overflow-y: auto;
+            max-height: 90vh;
+        }
+
+        h1 {
+            font-size: 2em;
+            color: #333;
+            margin-bottom: 20px;
+        }
+
+        form {
+            margin-bottom: 20px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: bold;
+        }
+
+        input[type="text"],
+        input[type="file"] {
+            width: calc(100% - 20px);
+            padding: 10px;
+            margin-bottom: 10px;
+            border-radius: 5px;
+            border: 1px solid #ccc;
+        }
+
+        button {
+            display: inline-block;
+            padding: 10px 20px;
+            color: #fff;
+            background-color: #007BFF;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 1em;
+        }
+
+        button:hover {
+            background-color: #0056b3;
+        }
+
+        hr {
+            margin: 20px 0;
+        }
+
+        .alert {
+            padding: 15px;
+            background-color: #f44336;
+            color: white;
+            margin-bottom: 20px;
+        }
+
+        .alert.success {background-color: #4CAF50;}
+    </style>
+</head>
+<body>
+    <div class="container">
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                    <div class="alert {{ category }}">{{ message }}</div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+        <img src="{{ url_for('static', filename='images/logo.png') }}" alt="Logo" class="logo" style="width: 150px; margin-bottom: 20px;">
+        <h1>Entrainement de Nouvelle Catégorie</h1>
+        <form action="{{ url_for('add_category') }}" method="post" enctype="multipart/form-data">
+            <label for="category_name">Catégorie:</label>
+            <select name="category_name" required>
+                {% for category in categories %}
+                    <option value="{{ category }}">{{ category }}</option>
+                {% endfor %}
+                <option value="autre">Autre</option>
+            </select>
+            <input type="text" name="new_category_name" placeholder="Nouvelle catégorie">
+            <label for="file_ok">Télécharger des images OK:</label>
+            <input type="file" name="file_ok" accept="image/*" multiple required>
+            <label for="file_nok">Télécharger des images NOK:</label>
+            <input type="file" name="file_nok" accept="image/*" multiple required>
+            <button type="submit">Ajouter et Entraîner</button>
+        </form>
+        <hr>
+        <h1>Classification des Images</h1>
+        <form action="{{ url_for('upload_images') }}" method="post" enctype="multipart/form-data">
+            <label for="file">Télécharger un Fichier ZIP:</label>
+            <input type="file" name="file" accept=".zip" required>
+            <button type="submit">Classifier</button>
+        </form>
+    </div>
+</body>
+</html>

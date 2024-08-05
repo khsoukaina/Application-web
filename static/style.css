@@ -1,0 +1,68 @@
+body {
+    font-family: Arial, sans-serif;
+    background: url('../images/eiffage_img.jpg') no-repeat center center fixed;
+    background-size: cover;
+    color: #000;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 100vh;
+}
+
+.container {
+    text-align: center;
+    background-color: rgba(255, 255, 255, 0.9); 
+    padding: 30px;
+    border-radius: 10px;
+    width: 90%;
+    max-width: 1200px;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1); 
+    overflow-y: auto;
+    max-height: 90vh;
+}
+
+h1 {
+    font-size: 2em;
+    color: #333;
+    margin-bottom: 20px;
+}
+
+table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 20px;
+}
+
+th, td {
+    border: 1px solid #ddd;
+    padding: 8px;
+    text-align: center;
+}
+
+th {
+    background-color: #333;
+    color: white;
+}
+
+img {
+    max-width: 100px;
+    height: auto;
+    border-radius: 5px;
+    object-fit: cover;
+}
+
+a {
+    display: inline-block;
+    margin-top: 20px;
+    text-decoration: none;
+    color: #fff;
+    background-color: #ff0000;
+    padding: 10px 20px;
+    border-radius: 5px;
+}
+
+a:hover {
+    background-color: #000;
+}
